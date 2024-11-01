@@ -6,7 +6,7 @@ import {
     WalletMultiButton
 } from '@solana/wallet-adapter-react-ui';
 import '@solana/wallet-adapter-react-ui/styles.css';
-import { TokenLaunchpad } from './components/TokenLaunchpad'
+import { TokenLaunchpad } from './Components/TokenLaunchPad'
 
 
 function App() {
