@@ -1,24 +1,57 @@
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { MINT_SIZE, TOKEN_PROGRAM_ID, createInitializeMint2Instruction, getMinimumBalanceForRentExemptMint } from "@solana/spl-token"
+import { TOKEN_2022_PROGRAM_ID, getMintLen, createInitializeMetadataPointerInstruction, createInitializeMintInstruction, TYPE_SIZE, LENGTH_SIZE, ExtensionType } from "@solana/spl-token"
+import { createInitializeInstruction, pack } from '@solana/spl-token-metadata';
+import { useState } from 'react';
 
 export function TokenLaunchpad() {
     const { connection } = useConnection();
     const wallet = useWallet();
+    
+    // Add state for form inputs
+    const [tokenName, setTokenName] = useState('');
+    const [tokenSymbol, setTokenSymbol] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
+    const [initialSupply, setInitialSupply] = useState('');
 
     async function createToken() {
         const mintKeypair = Keypair.generate();
-        const lamports = await getMinimumBalanceForRentExemptMint(connection);
+        
+        // Create metadata using form inputs
+        const metadata = {
+            mint: mintKeypair.publicKey,
+            name: tokenName,
+            symbol: tokenSymbol.padEnd(10), // SPL tokens require fixed-length symbols
+            uri: imageUrl,
+            additionalMetadata: [],
+        };
+
+
+        const mintLen = getMintLen([ExtensionType.MetadataPointer]);
+        const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(metadata).length;
+
+        const lamports = await connection.getMinimumBalanceForRentExemption(mintLen + metadataLen);
 
         const transaction = new Transaction().add(
             SystemProgram.createAccount({
                 fromPubkey: wallet.publicKey,
                 newAccountPubkey: mintKeypair.publicKey,
-                space: MINT_SIZE,
+                space: mintLen,
                 lamports,
-                programId: TOKEN_PROGRAM_ID,
+                programId: TOKEN_2022_PROGRAM_ID,
             }),
-            createInitializeMint2Instruction(mintKeypair.publicKey, 9, wallet.publicKey, wallet.publicKey, TOKEN_PROGRAM_ID)
+            createInitializeMetadataPointerInstruction(mintKeypair.publicKey, wallet.publicKey, mintKeypair.publicKey, TOKEN_2022_PROGRAM_ID),
+            createInitializeMintInstruction(mintKeypair.publicKey, 9, wallet.publicKey, null, TOKEN_2022_PROGRAM_ID),
+            createInitializeInstruction({
+                programId: TOKEN_2022_PROGRAM_ID,
+                mint: mintKeypair.publicKey,
+                metadata: mintKeypair.publicKey,
+                name: metadata.name,
+                symbol: metadata.symbol,
+                uri: metadata.uri,
+                mintAuthority: wallet.publicKey,
+                updateAuthority: wallet.publicKey,
+            }),
         );
             
         transaction.feePayer = wallet.publicKey;
@@ -26,21 +59,46 @@ export function TokenLaunchpad() {
         transaction.partialSign(mintKeypair);
 
         await wallet.sendTransaction(transaction, connection);
-        console.log(`Token mint created at ${mintKeypair.publicKey.toBase58()}`);
     }
 
-    return  <div style={{
-        height: '100vh',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        flexDirection: 'column'
-    }}>
-        <h1>Solana Token Launchpad</h1>
-        <input className='inputText' type='text' placeholder='Name'></input> <br />
-        <input className='inputText' type='text' placeholder='Symbol'></input> <br />
-        <input className='inputText' type='text' placeholder='Image URL'></input> <br />
-        <input className='inputText' type='text' placeholder='Initial Supply'></input> <br />
-        <button onClick={createToken} className='btn'>Create a token</button>
-    </div>
+    return (
+        <div style={{
+            height: '100vh',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            flexDirection: 'column'
+        }}>
+            <h1>Solana Token Launchpad</h1>
+            <input 
+                className='inputText' 
+                type='text' 
+                placeholder='Name'
+                value={tokenName}
+                onChange={(e) => setTokenName(e.target.value)}
+            />
+            <input 
+                className='inputText' 
+                type='text' 
+                placeholder='Symbol'
+                value={tokenSymbol}
+                onChange={(e) => setTokenSymbol(e.target.value)}
+            />
+            <input 
+                className='inputText' 
+                type='text' 
+                placeholder='Image URL'
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+            />
+            <input 
+                className='inputText' 
+                type='text' 
+                placeholder='Initial Supply'
+                value={initialSupply}
+                onChange={(e) => setInitialSupply(e.target.value)}
+            />
+            <button onClick={createToken} className='btn'>Create a token</button>
+        </div>
+    );
 }
